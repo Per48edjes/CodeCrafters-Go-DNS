@@ -31,8 +31,20 @@ func main() {
 		receivedData := string(buf[:size])
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
-		// Create an empty response
-		response := []byte{}
+		// Create an header response
+		testHeader, err := NewDNSHeader(DNSHeaderOptions{
+			ID: 1234,
+			QR: 1,
+		})
+		if err != nil {
+			fmt.Println("Failed to create DNS header:", err)
+			break
+		}
+		response, err := EncodeDNSHeader(testHeader)
+		if err != nil {
+			fmt.Println("Failed to encode DNS header:", err)
+			break
+		}
 
 		_, err = udpConn.WriteToUDP(response, source)
 		if err != nil {
