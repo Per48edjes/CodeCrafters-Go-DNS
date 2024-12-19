@@ -6,6 +6,14 @@ import (
 	"fmt"
 )
 
+type Encoder interface {
+	Encode() ([]byte, error)
+}
+
+type Decoder interface {
+	Decode([]byte) error
+}
+
 // DNSHeader represents a 12-byte DNS header
 type DNSHeader struct {
 	ID      uint16 // Identifier
@@ -31,6 +39,37 @@ type DNSHeaderOptions struct {
 	ANCount uint16
 	NSCount uint16
 	ARCount uint16
+}
+
+// DNSQuestionLabels are encoded as <length><content>, where <length> is a single byte that specifies the length of the label, and <content> is the actual content of the label. The sequence of labels is terminated by a null byte (\x00).
+type DNSQuestionLabel struct {
+	Length  uint8
+	Content string
+}
+
+// DNSQuestion represents a list of questions that the sender
+type DNSQuestion struct {
+	Name  []DNSQuestionLabel
+	Type  uint16
+	Class uint16
+}
+
+// DNSQuestionOptions represents the options for creating a new DNSQuestion
+type DNSQuestionOptions struct {
+	Question string
+	Type     uint16
+	Class    uint16
+}
+
+// NewDNSQuestion creates a new DNS question section with the given options
+func NewDNSQuestion(opts DNSQuestionOptions) (*DNSQuestion, error) {
+	questionLabels := nameToLabels(opts.Question)
+	question := DNSQuestion{
+		Name:  questionLabels,
+		Type:  opts.Type,
+		Class: opts.Class,
+	}
+	return &question, nil
 }
 
 // NewDNSHeader creates a new DNS header with the given options
@@ -67,9 +106,28 @@ func NewDNSHeader(opts DNSHeaderOptions) (*DNSHeader, error) {
 }
 
 // Serialize the DNS header into a 12-byte slice
-func EncodeDNSHeader(header *DNSHeader) ([]byte, error) {
+func (header *DNSHeader) Encode() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.BigEndian, header)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Serialize the DNS question into a byte slice
+func (question *DNSQuestion) Encode() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	for _, label := range question.Name {
+		buf.WriteByte(label.Length)
+		buf.WriteString(label.Content)
+	}
+	buf.WriteByte(0) // Null-terminate the sequence of labels
+	err := binary.Write(buf, binary.BigEndian, question.Type)
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Write(buf, binary.BigEndian, question.Class)
 	if err != nil {
 		return nil, err
 	}
