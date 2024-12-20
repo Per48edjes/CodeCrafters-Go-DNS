@@ -31,64 +31,48 @@ func main() {
 		receivedData := string(buf[:size])
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
-		// Create a test response parts
-		receivedHeader := &DNSHeader{}
-		if err := receivedHeader.Decode(buf[:DNSHeaderSize]); err != nil {
-			fmt.Println("Failed to create DNS header:", err)
-			break
-		}
-		var rCodeMod DNSHeaderModification
-		if receivedHeader.Flags&OpCodeMask == 0 {
-			rCodeMod = ModifyRCode(0)
-		} else {
-			rCodeMod = ModifyRCode(4)
-		}
-		testHeader, err := receivedHeader.ModifyDNSHeader(ModifyANCount(1), ModifyQR(1), ModifyAA(0), ModifyTC(0), ModifyRA(0), ModifyZ(0), rCodeMod)
-		if err != nil {
-			fmt.Println("Failed to modify DNS header:", err)
-			break
-		}
-		testQuestion, err := NewDNSQuestion(DNSQuestionOptions{
-			Question: "codecrafters.io",
-			Type:     1,
-			Class:    1,
-		})
-		if err != nil {
-			fmt.Println("Failed to create DNS question:", err)
-			break
-		}
-		testAnswer, err := NewDNSAnswer(DNSAnswerOptions{[]ResourceRecordOptions{{
-			Name:   "codecrafters.io",
-			Type:   1,
-			Class:  1,
-			TTL:    60,
-			Length: 4,
-			Data:   "8.8.8.8",
-		}}})
-		if err != nil {
-			fmt.Println("Failed to create DNS answer:", err)
+		receivedMessage := &DNSMessage{}
+		if err := receivedMessage.Decode(buf); err != nil {
+			fmt.Println("Failed to decode received DNS message:", err)
 			break
 		}
 
-		// Encode test response parts
-		header, err := testHeader.Encode()
+		// Make changes to received message to construct response
+		name, err := LabelsToString(receivedMessage.Question.Name)
 		if err != nil {
-			fmt.Println("Failed to encode DNS header:", err)
+			fmt.Println("Failed to convert labels to string:", err)
 			break
 		}
-		question, err := testQuestion.Encode()
-		if err != nil {
-			fmt.Println("Failed to encode DNS question:", err)
-			break
+		mods := []interface{}{
+			ModifyANCount(1),
+			ModifyQR(1),
+			ModifyAA(0),
+			ModifyTC(0),
+			ModifyRA(0),
+			ModifyZ(0),
+			ModifyQType(1),
+			ModifyClass(1),
+			ModifyAnswer([]ResourceRecordOptions{{
+				Name:   name,
+				Type:   1,
+				Class:  1,
+				TTL:    60,
+				Length: 4,
+				Data:   "8.8.8.8",
+			}}...),
 		}
-		answer, err := testAnswer.Encode()
+
+		responseMessage, err := receivedMessage.ModifyDNSMessage(mods...)
 		if err != nil {
-			fmt.Println("Failed to encode DNS answer:", err)
+			fmt.Println("Failed to modify DNS received message to construct response:", err)
 			break
 		}
 
-		// Splice together response parts
-		response := append(append(header, question...), answer...)
+		response, err := responseMessage.Encode()
+		if err != nil {
+			fmt.Println("Failed to encode response message:", err)
+			break
+		}
 
 		_, err = udpConn.WriteToUDP(response, source)
 		if err != nil {
