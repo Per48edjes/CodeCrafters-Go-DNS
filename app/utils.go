@@ -6,13 +6,27 @@ import (
 	"strings"
 )
 
-// Convert a string into a list of DNSQestionLabels
-func StringToLabels(name string) []DNSLabel {
+// Convert a string into a list of DNSLabels
+func StringToLabels(name string) ([]DNSLabel, error) {
 	labels := []DNSLabel{}
 	for _, label := range strings.Split(name, ".") {
-		labels = append(labels, DNSLabel{Length: uint8(len(label)), Content: label})
+		content := []byte(label)
+		length := len(content)
+		if length > 255 {
+			return nil, fmt.Errorf("Label %s is too long", label)
+		}
+		labels = append(labels, DNSLabel{Length: uint8(length), Content: content})
 	}
-	return labels
+	return labels, nil
+}
+
+// Convert a list of DNSLabels into a string
+func LabelsToString(labels []DNSLabel) (string, error) {
+	parts := []string{}
+	for _, label := range labels {
+		parts = append(parts, string(label.Content))
+	}
+	return strings.Join(parts, "."), nil
 }
 
 // Convert an IP address into a byte slice; if invalide input, the function returns non-nil error

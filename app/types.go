@@ -12,11 +12,29 @@ type Decoder interface {
 	Decode([]byte) error
 }
 
-type DNSMessage struct {
-	Header   DNSHeader
-	Question DNSQuestion
-	Answer   DNSAnswer
+type Serializable interface {
+	Encoder
+	Decoder
 }
+
+type DNSMessage struct {
+	Header   *DNSHeader
+	Question *DNSQuestion
+	Answer   *DNSAnswer
+}
+
+type DNSModification interface {
+	DNSHeaderModification | DNSQuestionModification | DNSAnswerModification
+}
+
+// DNSHeaderModifications can be passed to ModifyDNSHeader to optionally change the header fields
+type DNSHeaderModification func(*DNSHeader) error
+
+// DNSQuestionModifications can be passed to ModifyDNSQuestion to optionally change the question fields
+type DNSQuestionModification func(*DNSQuestion) error
+
+// DNSAnswerModifications can be passed to ModifyDNSAnswer to optionally change the answer fields
+type DNSAnswerModification func(*DNSAnswer) error
 
 // DNSHeaderOptions represents the options for creating a new DNS header
 type DNSHeaderOptions struct {
@@ -35,9 +53,6 @@ type DNSHeaderOptions struct {
 	ARCount uint16
 }
 
-// DNSHeaderModifications can be passed to ModifyDNSHeader to change the header fields in place, optionally
-type DNSHeaderModification func(*DNSHeader) error
-
 // DNSHeader represents a 12-byte DNS header
 type DNSHeader struct {
 	ID      uint16 // Identifier
@@ -51,14 +66,14 @@ type DNSHeader struct {
 // DNSQuestionLabels are encoded as <length><content>, where <length> is a single byte that specifies the length of the label, and <content> is the actual content of the label. The sequence of labels is terminated by a null byte (\x00).
 type DNSLabel struct {
 	Length  uint8
-	Content string
+	Content []byte
 }
 
 // DNSQuestionOptions represents the options for creating a new DNSQuestion
 type DNSQuestionOptions struct {
-	Question string
-	Type     uint16
-	Class    uint16
+	Name  string
+	Type  uint16
+	Class uint16
 }
 
 // DNSQuestion represents a list of questions that the client wants to ask the server
