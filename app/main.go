@@ -37,6 +37,7 @@ func main() {
 			fmt.Println("Failed to create DNS header:", err)
 			break
 		}
+
 		testQuestion, err := NewDNSQuestion(DNSQuestionOptions{
 			Question: "codecrafters.io",
 			Type:     1,
@@ -46,14 +47,14 @@ func main() {
 			fmt.Println("Failed to create DNS question:", err)
 			break
 		}
-		testAnswer, err := NewDNSAnswer([]ResourceRecordOptions{{
+		testAnswer, err := NewDNSAnswer(DNSAnswerOptions{[]ResourceRecordOptions{{
 			Name:   "codecrafters.io",
 			Type:   1,
 			Class:  1,
 			TTL:    60,
 			Length: 4,
 			Data:   "8.8.8.8",
-		}})
+		}}})
 		if err != nil {
 			fmt.Println("Failed to create DNS answer:", err)
 			break
