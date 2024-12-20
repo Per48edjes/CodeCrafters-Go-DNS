@@ -32,13 +32,8 @@ func main() {
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
 		// Create a test response parts
-		testHeader, err := NewDNSHeader(DNSHeaderOptions{
-			ID:      1234,
-			QR:      1,
-			QDCount: 1,
-			ANCount: 1,
-		})
-		if err != nil {
+		testHeader := &DNSHeader{}
+		if err := testHeader.Decode(buf[:12]); err != nil {
 			fmt.Println("Failed to create DNS header:", err)
 			break
 		}

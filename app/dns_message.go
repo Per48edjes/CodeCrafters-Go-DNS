@@ -209,3 +209,16 @@ func (answer *DNSAnswer) Encode() ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// Deserialize the DNS haeder from a 12-byte slice
+func (header *DNSHeader) Decode(encoded []byte) error {
+	expectedSize := int(binary.Size(header))
+	if len(encoded) != expectedSize {
+		return fmt.Errorf("Expected %d bytes in header, got %d", expectedSize, len(encoded))
+	}
+	buf := bytes.NewReader(encoded)
+	if err := binary.Read(buf, binary.BigEndian, header); err != nil {
+		return err
+	}
+	return nil
+}
