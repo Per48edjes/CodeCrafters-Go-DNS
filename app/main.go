@@ -31,11 +31,12 @@ func main() {
 		receivedData := string(buf[:size])
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
-		// Create a test response
+		// Create a test response parts
 		testHeader, err := NewDNSHeader(DNSHeaderOptions{
 			ID:      1234,
 			QR:      1,
 			QDCount: 1,
+			ANCount: 1,
 		})
 		if err != nil {
 			fmt.Println("Failed to create DNS header:", err)
@@ -50,8 +51,20 @@ func main() {
 			fmt.Println("Failed to create DNS question:", err)
 			break
 		}
+		testAnswer, err := NewDNSAnswer([]ResourceRecordOptions{{
+			Name:   "codecrafters.io",
+			Type:   1,
+			Class:  1,
+			TTL:    60,
+			Length: 4,
+			Data:   "8.8.8.8",
+		}})
+		if err != nil {
+			fmt.Println("Failed to create DNS answer:", err)
+			break
+		}
 
-		// Encode test responses
+		// Encode test response parts
 		header, err := testHeader.Encode()
 		if err != nil {
 			fmt.Println("Failed to encode DNS header:", err)
@@ -62,9 +75,14 @@ func main() {
 			fmt.Println("Failed to encode DNS question:", err)
 			break
 		}
+		answer, err := testAnswer.Encode()
+		if err != nil {
+			fmt.Println("Failed to encode DNS answer:", err)
+			break
+		}
 
 		// Splice together response parts
-		response := append(header, question...)
+		response := append(append(header, question...), answer...)
 
 		_, err = udpConn.WriteToUDP(response, source)
 		if err != nil {

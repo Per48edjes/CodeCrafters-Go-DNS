@@ -42,14 +42,14 @@ type DNSHeaderOptions struct {
 }
 
 // DNSQuestionLabels are encoded as <length><content>, where <length> is a single byte that specifies the length of the label, and <content> is the actual content of the label. The sequence of labels is terminated by a null byte (\x00).
-type DNSQuestionLabel struct {
+type DNSLabel struct {
 	Length  uint8
 	Content string
 }
 
 // DNSQuestion represents a list of questions that the sender
 type DNSQuestion struct {
-	Name  []DNSQuestionLabel
+	Name  []DNSLabel
 	Type  uint16
 	Class uint16
 }
@@ -61,9 +61,31 @@ type DNSQuestionOptions struct {
 	Class    uint16
 }
 
+type DNSAnswer struct {
+	ResourceRecords []ResourceRecord
+}
+
+type ResourceRecordOptions struct {
+	Name   string
+	Type   uint16
+	Class  uint16
+	TTL    uint32
+	Length uint16
+	Data   string
+}
+
+type ResourceRecord struct {
+	Name   []DNSLabel
+	Type   uint16
+	Class  uint16
+	TTL    uint32
+	Length uint16
+	Data   []byte
+}
+
 // NewDNSQuestion creates a new DNS question section with the given options
 func NewDNSQuestion(opts DNSQuestionOptions) (*DNSQuestion, error) {
-	questionLabels := nameToLabels(opts.Question)
+	questionLabels := StringToLabels(opts.Question)
 	question := DNSQuestion{
 		Name:  questionLabels,
 		Type:  opts.Type,
@@ -105,6 +127,27 @@ func NewDNSHeader(opts DNSHeaderOptions) (*DNSHeader, error) {
 	return &header, nil
 }
 
+// NewDNSAnswer creates a new DNS answer section with the given resource records
+func NewDNSAnswer(records []ResourceRecordOptions) (*DNSAnswer, error) {
+	var answer DNSAnswer
+	for _, record := range records {
+		question := StringToLabels(record.Name)
+		data, err := IPToBytes(record.Data, record.Length)
+		if err != nil {
+			return nil, err
+		}
+		answer.ResourceRecords = append(answer.ResourceRecords, ResourceRecord{
+			Name:   question,
+			Type:   record.Type,
+			Class:  record.Class,
+			TTL:    record.TTL,
+			Length: record.Length,
+			Data:   data,
+		})
+	}
+	return &answer, nil
+}
+
 // Serialize the DNS header into a 12-byte slice
 func (header *DNSHeader) Encode() ([]byte, error) {
 	buf := new(bytes.Buffer)
@@ -130,6 +173,35 @@ func (question *DNSQuestion) Encode() ([]byte, error) {
 	err = binary.Write(buf, binary.BigEndian, question.Class)
 	if err != nil {
 		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (answer *DNSAnswer) Encode() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	for _, record := range answer.ResourceRecords {
+		for _, label := range record.Name {
+			buf.WriteByte(label.Length)
+			buf.WriteString(label.Content)
+		}
+		buf.WriteByte(0) // Null-terminate the sequence of labels
+		err := binary.Write(buf, binary.BigEndian, record.Type)
+		if err != nil {
+			return nil, err
+		}
+		err = binary.Write(buf, binary.BigEndian, record.Class)
+		if err != nil {
+			return nil, err
+		}
+		err = binary.Write(buf, binary.BigEndian, record.TTL)
+		if err != nil {
+			return nil, err
+		}
+		err = binary.Write(buf, binary.BigEndian, record.Length)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(record.Data)
 	}
 	return buf.Bytes(), nil
 }
