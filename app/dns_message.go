@@ -227,3 +227,35 @@ func ModifyRCode(rCode uint16) DNSHeaderModification {
 		return nil
 	}
 }
+
+// ModifyQDCount modifies the QDCount field of a DNS header
+func ModifyQDCount(qdCount uint16) DNSHeaderModification {
+	return func(header *DNSHeader) error {
+		header.QDCount = qdCount
+		return nil
+	}
+}
+
+// ModifyANCount modifies the ANCount field of a DNS header
+func ModifyANCount(anCount uint16) DNSHeaderModification {
+	return func(header *DNSHeader) error {
+		header.ANCount = anCount
+		return nil
+	}
+}
+
+// ModifyNSCount modifies the NSCount field of a DNS header
+func ModifyNSCount(nsCount uint16) DNSHeaderModification {
+	return func(header *DNSHeader) error {
+		header.NSCount = nsCount
+		return nil
+	}
+}
+
+// ModifyARCount modifies the ARCount field of a DNS header
+func ModifyARCount(arCount uint16) DNSHeaderModification {
+	return func(header *DNSHeader) error {
+		header.ARCount = arCount
+		return nil
+	}
+}

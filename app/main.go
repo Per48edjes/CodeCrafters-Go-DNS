@@ -32,12 +32,22 @@ func main() {
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
 		// Create a test response parts
-		testHeader := &DNSHeader{}
-		if err := testHeader.Decode(buf[:12]); err != nil {
+		receivedHeader := &DNSHeader{}
+		if err := receivedHeader.Decode(buf[:DNSHeaderSize]); err != nil {
 			fmt.Println("Failed to create DNS header:", err)
 			break
 		}
-
+		var rCodeMod DNSHeaderModification
+		if receivedHeader.Flags&OpCodeMask == 0 {
+			rCodeMod = ModifyRCode(0)
+		} else {
+			rCodeMod = ModifyRCode(4)
+		}
+		testHeader, err := receivedHeader.ModifyDNSHeader(ModifyANCount(1), ModifyQR(1), ModifyAA(0), ModifyTC(0), ModifyRA(0), ModifyZ(0), rCodeMod)
+		if err != nil {
+			fmt.Println("Failed to modify DNS header:", err)
+			break
+		}
 		testQuestion, err := NewDNSQuestion(DNSQuestionOptions{
 			Question: "codecrafters.io",
 			Type:     1,
