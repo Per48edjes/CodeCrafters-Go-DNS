@@ -47,7 +47,7 @@ type DNSLabel struct {
 	Content string
 }
 
-// DNSQuestion represents a list of questions that the sender
+// DNSQuestion represents a list of questions that the client wants to ask the server
 type DNSQuestion struct {
 	Name  []DNSLabel
 	Type  uint16
@@ -61,10 +61,12 @@ type DNSQuestionOptions struct {
 	Class    uint16
 }
 
+// DNSAnswer represents a list of resource records that the answer the questions sent by the client
 type DNSAnswer struct {
 	ResourceRecords []ResourceRecord
 }
 
+// ResourceRecordOptions represents the options for creating a new ResourceRecord
 type ResourceRecordOptions struct {
 	Name   string
 	Type   uint16
@@ -74,6 +76,7 @@ type ResourceRecordOptions struct {
 	Data   string
 }
 
+// ResourceRecord represents a resource record in the answer section of a DNS message
 type ResourceRecord struct {
 	Name   []DNSLabel
 	Type   uint16
@@ -177,6 +180,7 @@ func (question *DNSQuestion) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Serialize the DNS answer into a byte slice
 func (answer *DNSAnswer) Encode() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	for _, record := range answer.ResourceRecords {
