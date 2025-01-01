@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 )
@@ -19,59 +20,75 @@ func main() {
 	}
 	defer udpConn.Close()
 
-	buf := make([]byte, 512)
+	b := make([]byte, 512)
 
+eventLoop:
 	for {
-		size, source, err := udpConn.ReadFromUDP(buf)
+		size, source, err := udpConn.ReadFromUDP(b)
 		if err != nil {
 			fmt.Println("Error receiving data:", err)
 			break
 		}
 
-		receivedData := string(buf[:size])
+		receivedData := string(b[:size])
 		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
 
+		buf := bytes.NewReader(b[:size])
+
 		receivedMessage := &DNSMessage{}
-		if err := receivedMessage.Decode(buf); err != nil {
+		if err = receivedMessage.Decode(buf); err != nil {
 			fmt.Println("Failed to decode received DNS message:", err)
 			break
 		}
 
-		// Make changes to received message to construct response
-		name, err := LabelsToString(receivedMessage.Question.Name)
-		if err != nil {
-			fmt.Println("Failed to convert labels to string:", err)
-			break
-		}
-		mods := []interface{}{
-			ModifyANCount(1),
+		// Modify the header to reflect that this is a response
+		receivedMessage.Header, err = receivedMessage.Header.ModifyDNSHeader(
+			ModifyANCount(receivedMessage.Header.QDCount),
 			ModifyQR(1),
 			ModifyAA(0),
 			ModifyTC(0),
 			ModifyRA(0),
 			ModifyZ(0),
-			ModifyQType(1),
-			ModifyClass(1),
-			ModifyAnswer([]ResourceRecordOptions{{
+		)
+		if err != nil {
+			fmt.Println("Failed to modify DNS header:", err)
+			break eventLoop
+		}
+
+		// Modify the questions to reflect the response
+		for i, question := range receivedMessage.Questions {
+			var name string
+			var answer *DNSAnswer
+			name, err = LabelsToString(question.Name)
+			if err != nil {
+				fmt.Println("Failed to convert labels to string:", err)
+				break eventLoop
+			}
+			question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
+			if err != nil {
+				fmt.Println("Failed to modify DNS Questions:", err)
+				break eventLoop
+			}
+			answer, err = NewDNSAnswer([]ResourceRecordOptions{{
 				Name:   name,
 				Type:   1,
 				Class:  1,
 				TTL:    60,
 				Length: 4,
 				Data:   "8.8.8.8",
-			}}...),
+			}})
+			if err != nil {
+				fmt.Println("Failed to create new DNS Answer:", err)
+				break eventLoop
+			}
+			receivedMessage.Questions[i] = question
+			receivedMessage.Answers = append(receivedMessage.Answers, answer)
 		}
 
-		responseMessage, err := receivedMessage.ModifyDNSMessage(mods...)
-		if err != nil {
-			fmt.Println("Failed to modify DNS received message to construct response:", err)
-			break
-		}
-
-		response, err := responseMessage.Encode()
+		response, err := receivedMessage.Encode()
 		if err != nil {
 			fmt.Println("Failed to encode response message:", err)
-			break
+			break eventLoop
 		}
 
 		_, err = udpConn.WriteToUDP(response, source)
