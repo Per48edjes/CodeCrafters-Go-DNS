@@ -19,8 +19,8 @@ type Serializable interface {
 
 type DNSMessage struct {
 	Header   *DNSHeader
-	Question *DNSQuestion
-	Answer   *DNSAnswer
+	Question []*DNSQuestion
+	Answer   []*DNSAnswer
 }
 
 type DNSModification interface {

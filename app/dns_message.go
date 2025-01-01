@@ -197,6 +197,7 @@ func (question *DNSQuestion) Decode(encoded []byte) error {
 	return nil
 }
 
+// TODO: Modify to accomodoate multiple DNSQuestions and DNSAnswers
 // Deserialize the DNS answer from the byte slice from a query; overwrites the existing header and question is messaege is not nil
 func (message *DNSMessage) Decode(encoded []byte) error {
 	receivedHeader := &DNSHeader{}
@@ -207,7 +208,6 @@ func (message *DNSMessage) Decode(encoded []byte) error {
 	if err := receivedQuestion.Decode(encoded[DNSHeaderSize:]); err != nil {
 		return err
 	}
-
 	// Change header response code from query
 	var rCodeMod DNSHeaderModification
 	if receivedHeader.Flags&OpCodeMask == 0 {
@@ -215,12 +215,12 @@ func (message *DNSMessage) Decode(encoded []byte) error {
 	} else {
 		rCodeMod = ModifyRCode(4) // Not Implemented
 	}
-
 	message.Header, message.Question, message.Answer = receivedHeader, receivedQuestion, &DNSAnswer{} // Empty answer section
 	message.ModifyDNSMessage(rCodeMod)
 	return nil
 }
 
+// TODO: Modify to accomodoate multiple DNSQuestions and DNSAnswers
 // ModifyDNSMessage modifies an existing DNS message with the given options; if any modification fails, the original message is returned
 func (message *DNSMessage) ModifyDNSMessage(modifications ...interface{}) (*DNSMessage, error) {
 	newMessage := *message
