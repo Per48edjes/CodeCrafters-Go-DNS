@@ -22,7 +22,7 @@ func main() {
 
 	b := make([]byte, 512)
 
-eventLoop:
+	// eventLoop:
 	for {
 		size, source, err := udpConn.ReadFromUDP(b)
 		if err != nil {
@@ -41,59 +41,63 @@ eventLoop:
 			break
 		}
 
-		// Modify the header to reflect that this is a response
-		receivedMessage.Header, err = receivedMessage.Header.ModifyDNSHeader(
-			ModifyANCount(1),
-			ModifyQR(1),
-			ModifyAA(0),
-			ModifyTC(0),
-			ModifyRA(0),
-			ModifyZ(0),
-		)
-		if err != nil {
-			fmt.Println("Failed to modify DNS header:", err)
-			break eventLoop
-		}
+		fmt.Println(receivedMessage.Questions)
 
-		// Modify the questions to reflect the response
-		for i, question := range receivedMessage.Questions {
-			var name string
-			var answer *DNSAnswer
-			name, err = LabelsToString(question.Name)
+		/*
+				// Modify the header to reflect that this is a response
+				receivedMessage.Header, err = receivedMessage.Header.ModifyDNSHeader(
+					ModifyANCount(1),
+					ModifyQR(1),
+					ModifyAA(0),
+					ModifyTC(0),
+					ModifyRA(0),
+					ModifyZ(0),
+				)
+				if err != nil {
+					fmt.Println("Failed to modify DNS header:", err)
+					break eventLoop
+				}
+
+					// Modify the questions to reflect the response
+					for i, question := range receivedMessage.Questions {
+						var name string
+						var answer *DNSAnswer
+						name, err = LabelsToString(question.Name)
+						if err != nil {
+							fmt.Println("Failed to convert labels to string:", err)
+							break eventLoop
+						}
+						question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
+						if err != nil {
+							fmt.Println("Failed to modify DNS Questions:", err)
+							break eventLoop
+						}
+						answer, err = NewDNSAnswer([]ResourceRecordOptions{{
+							Name:   name,
+							Type:   1,
+							Class:  1,
+							TTL:    60,
+							Length: 4,
+							Data:   "8.8.8.8",
+						}})
+						if err != nil {
+							fmt.Println("Failed to create new DNS Answer:", err)
+							break eventLoop
+						}
+						receivedMessage.Questions[i] = question
+						receivedMessage.Answers = append(receivedMessage.Answers, answer)
+					}
+
+			response, err := receivedMessage.Encode()
 			if err != nil {
-				fmt.Println("Failed to convert labels to string:", err)
+				fmt.Println("Failed to encode response message:", err)
 				break eventLoop
 			}
-			question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
-			if err != nil {
-				fmt.Println("Failed to modify DNS Questions:", err)
-				break eventLoop
-			}
-			answer, err = NewDNSAnswer([]ResourceRecordOptions{{
-				Name:   name,
-				Type:   1,
-				Class:  1,
-				TTL:    60,
-				Length: 4,
-				Data:   "8.8.8.8",
-			}})
-			if err != nil {
-				fmt.Println("Failed to create new DNS Answer:", err)
-				break eventLoop
-			}
-			receivedMessage.Questions[i] = question
-			receivedMessage.Answers = append(receivedMessage.Answers, answer)
-		}
 
-		response, err := receivedMessage.Encode()
-		if err != nil {
-			fmt.Println("Failed to encode response message:", err)
-			break eventLoop
-		}
-
-		_, err = udpConn.WriteToUDP(response, source)
-		if err != nil {
-			fmt.Println("Failed to send response:", err)
-		}
+			_, err = udpConn.WriteToUDP(response, source)
+			if err != nil {
+				fmt.Println("Failed to send response:", err)
+			}
+		*/
 	}
 }

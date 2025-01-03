@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
+	"fmt"
 )
 
 // NewDNSHeader creates a new DNS header with the given options
@@ -152,6 +152,7 @@ func (header *DNSHeader) Decode(buf *bytes.Reader) error {
 	return nil
 }
 
+// BUG: Need to figure out why we're not properly decoding a question
 // Deserialize the DNS question from the byte slice after the header in a query
 func (question *DNSQuestion) Decode(buf *bytes.Reader) error {
 	qNameBytes, err := ReadQName(buf)
@@ -159,6 +160,7 @@ func (question *DNSQuestion) Decode(buf *bytes.Reader) error {
 		return err
 	}
 	qName, err := BytesToLabels(qNameBytes)
+	fmt.Println(qName)
 	if err != nil {
 		return err
 	}
@@ -181,15 +183,12 @@ func (message *DNSMessage) Decode(buf *bytes.Reader) error {
 	}
 	// Parse questions
 	receivedQuestions := make([]*DNSQuestion, receivedHeader.QDCount)
-	for i := range cap(receivedQuestions) {
+	for range cap(receivedQuestions) {
 		receivedQuestion := &DNSQuestion{}
 		if err := receivedQuestion.Decode(buf); err != nil {
-			if err == io.EOF {
-				break
-			}
 			return err
 		}
-		receivedQuestions[i] = receivedQuestion
+		receivedQuestions = append(receivedQuestions, receivedQuestion)
 	}
 	// Change header response code from query
 	var rCodeMod DNSHeaderModification
