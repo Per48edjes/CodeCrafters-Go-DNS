@@ -1,26 +1,28 @@
 package main
 
+import "bytes"
+
 /*
 This module contains the interfaces and types for the DNS message.
 */
 
-type Encoder interface {
+type encoder interface {
 	Encode() ([]byte, error)
 }
 
-type Decoder interface {
-	Decode([]byte) error
+type decoder interface {
+	Decode(*bytes.Reader) error
 }
 
 type Serializable interface {
-	Encoder
-	Decoder
+	encoder
+	decoder
 }
 
 type DNSMessage struct {
-	Header   *DNSHeader
-	Question []*DNSQuestion
-	Answer   []*DNSAnswer
+	Header    *DNSHeader
+	Questions []*DNSQuestion
+	Answers   []*DNSAnswer
 }
 
 type DNSModification interface {

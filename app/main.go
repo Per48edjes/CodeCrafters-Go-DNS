@@ -38,7 +38,7 @@ func main() {
 		}
 
 		// Make changes to received message to construct response
-		name, err := LabelsToString(receivedMessage.Question.Name)
+		name, err := LabelsToString(receivedMessage.Questions.Name)
 		if err != nil {
 			fmt.Println("Failed to convert labels to string:", err)
 			break

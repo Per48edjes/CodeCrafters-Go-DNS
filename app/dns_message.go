@@ -20,7 +20,7 @@ func NewDNSMessage(headerOpts DNSHeaderOptions, questionOpts DNSQuestionOptions,
 	if err != nil {
 		return nil, err
 	}
-	return &DNSMessage{Header: header, Question: question, Answer: answer}, nil
+	return &DNSMessage{Header: header, Questions: question, Answers: answer}, nil
 }
 
 // NewDNSHeader creates a new DNS header with the given options
@@ -77,11 +77,11 @@ func (message *DNSMessage) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	questionBytes, err := message.Question.Encode()
+	questionBytes, err := message.Questions.Encode()
 	if err != nil {
 		return nil, err
 	}
-	answerBytes, err := message.Answer.Encode()
+	answerBytes, err := message.Answers.Encode()
 	if err != nil {
 		return nil, err
 	}
@@ -170,24 +170,16 @@ func (header *DNSHeader) Decode(encoded []byte) error {
 }
 
 // Deserialize the DNS question from the byte slice after the header in a query
-func (question *DNSQuestion) Decode(encoded []byte) error {
-	buf := bytes.NewReader(encoded)
-
-	var label DNSLabel
-	for {
-		if err := binary.Read(buf, binary.BigEndian, &label.Length); err != nil {
-			return err
-		}
-		if label.Length == 0 {
-			break
-		}
-		label.Content = make([]byte, label.Length)
-		if _, err := buf.Read(label.Content); err != nil {
-			return err
-		}
-		question.Name = append(question.Name, label)
+func (question *DNSQuestion) Decode(buf *bytes.Reader) error {
+	qNameBytes, err := readQName(buf)
+	if err != nil {
+		return err
 	}
-
+	qName, err := BytesToLabels(qNameBytes)
+	if err != nil {
+		return err
+	}
+	question.Name = qName
 	if err := binary.Read(buf, binary.BigEndian, &question.Type); err != nil {
 		return err
 	}
@@ -197,16 +189,23 @@ func (question *DNSQuestion) Decode(encoded []byte) error {
 	return nil
 }
 
-// TODO: Modify to accomodoate multiple DNSQuestions and DNSAnswers
 // Deserialize the DNS answer from the byte slice from a query; overwrites the existing header and question is messaege is not nil
 func (message *DNSMessage) Decode(encoded []byte) error {
-	receivedHeader := &DNSHeader{}
-	if err := receivedHeader.Decode(encoded[:DNSHeaderSize]); err != nil {
+	header, questions := encoded[:DNSHeaderSize], encoded[DNSHeaderSize:]
+	// Parse header
+	buf, receivedHeader := bytes.NewReader(header), &DNSHeader{}
+	if err := receivedHeader.Decode(header); err != nil {
 		return err
 	}
-	receivedQuestion := &DNSQuestion{}
-	if err := receivedQuestion.Decode(encoded[DNSHeaderSize:]); err != nil {
-		return err
+	// Parse questions
+	buf = bytes.NewReader(questions)
+	receivedQuestions := make([]*DNSQuestion, receivedHeader.QDCount)
+	for i := uint16(0); i < receivedHeader.QDCount; i++ {
+		receivedQuestion := &DNSQuestion{}
+		if err := receivedQuestion.Decode(buf); err != nil {
+			return err
+		}
+		receivedQuestions[i] = receivedQuestion
 	}
 	// Change header response code from query
 	var rCodeMod DNSHeaderModification
@@ -215,7 +214,7 @@ func (message *DNSMessage) Decode(encoded []byte) error {
 	} else {
 		rCodeMod = ModifyRCode(4) // Not Implemented
 	}
-	message.Header, message.Question, message.Answer = receivedHeader, receivedQuestion, &DNSAnswer{} // Empty answer section
+	message.Header, message.Questions, message.Answers = receivedHeader, receivedQuestions, []*DNSAnswer{} // Empty answer section
 	message.ModifyDNSMessage(rCodeMod)
 	return nil
 }
@@ -231,11 +230,11 @@ func (message *DNSMessage) ModifyDNSMessage(modifications ...interface{}) (*DNSM
 				return message, err
 			}
 		case DNSQuestionModification:
-			if err := mod(newMessage.Question); err != nil {
+			if err := mod(newMessage.Questions); err != nil {
 				return message, err
 			}
 		case DNSAnswerModification:
-			if err := mod(newMessage.Answer); err != nil {
+			if err := mod(newMessage.Answers); err != nil {
 				return message, err
 			}
 		default:
