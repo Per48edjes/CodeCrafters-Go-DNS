@@ -6,17 +6,17 @@ import "bytes"
 This module contains the interfaces and types for the DNS message.
 */
 
-type encoder interface {
+type Encoder interface {
 	Encode() ([]byte, error)
 }
 
-type decoder interface {
+type Decoder interface {
 	Decode(*bytes.Reader) error
 }
 
 type Serializable interface {
-	encoder
-	decoder
+	Encoder
+	Decoder
 }
 
 type DNSMessage struct {
@@ -25,18 +25,11 @@ type DNSMessage struct {
 	Answers   []*DNSAnswer
 }
 
-type DNSModification interface {
-	DNSHeaderModification | DNSQuestionModification | DNSAnswerModification
-}
-
 // DNSHeaderModifications can be passed to ModifyDNSHeader to optionally change the header fields
 type DNSHeaderModification func(*DNSHeader) error
 
 // DNSQuestionModifications can be passed to ModifyDNSQuestion to optionally change the question fields
 type DNSQuestionModification func(*DNSQuestion) error
-
-// DNSAnswerModifications can be passed to ModifyDNSAnswer to optionally change the answer fields
-type DNSAnswerModification func(*DNSAnswer) error
 
 // DNSHeaderOptions represents the options for creating a new DNS header
 type DNSHeaderOptions struct {
@@ -103,11 +96,6 @@ type ResourceRecord struct {
 	TTL    uint32
 	Length uint16
 	Data   []byte
-}
-
-// DNSAnswerOptions is a wrapper around a list of ResourceRecordOptions
-type DNSAnswerOptions struct {
-	ResourceRecords []ResourceRecordOptions
 }
 
 // DNSAnswer represents a list of resource records that the answer the questions sent by the client

@@ -15,7 +15,7 @@ func StringToLabels(name string) ([]DNSLabel, error) {
 		content := []byte(label)
 		length := len(content)
 		if length > 255 {
-			return nil, fmt.Errorf("Label %s is too long", label)
+			return nil, fmt.Errorf("label %s is too long", label)
 		}
 		labels = append(labels, DNSLabel{Length: uint8(length), Content: content})
 	}
@@ -59,17 +59,17 @@ func IPToBytes(IPAddress string, dataLength uint16) ([]byte, error) {
 	for i, part := range parts {
 		num, err := strconv.Atoi(part)
 		if err != nil || num < 0 || num > 255 {
-			return nil, fmt.Errorf("Invalid IP address: %s", IPAddress)
+			return nil, fmt.Errorf("invalid IP address: %s", IPAddress)
 		}
 		bytes[i] = byte(num)
 	}
 	return bytes, nil
 }
 
-// readQName consumes bytes until a NULL byte or pointer is encountered to recover the uncompressed bytes of a DNS name
+// ReadQName consumes bytes until a NULL byte or pointer is encountered to recover the uncompressed bytes of a DNS name
 // - If a NULL byte is encountered, it is included in the result.
 // - If a pointer is encountered, it recursively resolves and appends the pointed data.
-func readQName(buf *bytes.Reader) ([]byte, error) {
+func ReadQName(buf *bytes.Reader) ([]byte, error) {
 	var result []byte
 	for {
 		// Read the next byte
@@ -91,7 +91,7 @@ func readQName(buf *bytes.Reader) ([]byte, error) {
 			offset := uint16(b&0x3F)<<8 | uint16(next)  // Extract the offset from the pointer
 			currentPos := buf.Size() - int64(buf.Len()) // Current position
 			buf.Seek(int64(offset), io.SeekStart)       // Move to the pointer offset
-			pointedData, err := readQName(buf)          // Recursively resolve the pointer
+			pointedData, err := ReadQName(buf)          // Recursively resolve the pointer
 			if err != nil {
 				return nil, err
 			}
