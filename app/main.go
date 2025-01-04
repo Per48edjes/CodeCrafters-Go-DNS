@@ -12,6 +12,11 @@ func main() {
 		fmt.Println("Failed to resolve UDP address:", err)
 		return
 	}
+	resolverAddr, err := parseResolverFlag()
+	if err != nil {
+		fmt.Printf("Error parsing flags: %v\n", err)
+		return
+	}
 
 	udpConn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
@@ -41,10 +46,26 @@ eventLoop:
 			break
 		}
 
+		// Split up received message into individual requests to forward
+		requestMessages := receivedMessage.SplitDNSMessage()
+		for _, requestMessage := range requestMessages {
+			var request []byte
+			request, err = requestMessage.Encode()
+			if err != nil {
+				fmt.Println("Failed to encode forward-ed request:", err)
+				break eventLoop
+			}
+
+			_, err = udpConn.WriteToUDP(request, resolverAddr)
+			if err != nil {
+				fmt.Println("Failed to send response:", err)
+			}
+		}
+
 		// Modify the header to reflect that this is a response
 		receivedMessage.Header, err = receivedMessage.Header.ModifyDNSHeader(
-			ModifyANCount(receivedMessage.Header.QDCount),
-			ModifyQR(1),
+			ModifyANCount(receivedMessage.Header.QDCount), // Message contains answers in equal number to questions
+			ModifyQR(1), // Message is now a response
 			ModifyAA(0),
 			ModifyTC(0),
 			ModifyRA(0),
@@ -54,6 +75,8 @@ eventLoop:
 			fmt.Println("Failed to modify DNS header:", err)
 			break eventLoop
 		}
+
+		// NOTE: Everything below is from prior implementations
 
 		// Modify the questions to reflect the response
 		for i, question := range receivedMessage.Questions {

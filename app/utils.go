@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 )
 
@@ -86,4 +88,31 @@ func ReadQName(buf *bytes.Reader) ([]byte, error) {
 			result = append(result, b)
 		}
 	}
+}
+
+// Captures input to --resolver flag
+func parseResolverFlag() (*net.UDPAddr, error) {
+	resolverFlag := flag.String("resolver", "", "The resolver address in the form ip:port")
+	flag.Parse()
+	if *resolverFlag == "" {
+		return nil, fmt.Errorf("please provide a resolver address with --resolver flag")
+	}
+	resolverAddr, err := net.ResolveUDPAddr("udp", *resolverFlag)
+	if err != nil {
+		return nil, err
+	}
+	return resolverAddr, nil
+}
+
+// Breaks a DNSMessage containing potentially multiple questions into a slice of individual DNSMessages
+//   - The input message must have an empty DNSAnswer, which is replicated across ouput messages.
+func (m *DNSMessage) SplitDNSMessage() []*DNSMessage {
+	messages := make([]*DNSMessage, m.Header.QDCount)
+	for i := uint16(0); i < m.Header.QDCount; i++ {
+		newMessage := DNSMessage{Header: &DNSHeader{}, Questions: []*DNSQuestion{m.Questions[i]}, Answers: m.Answers}
+		*newMessage.Header = *m.Header
+		newMessage.Header.ModifyDNSHeader(ModifyQDCount(1))
+		messages[i] = &newMessage
+	}
+	return messages
 }
