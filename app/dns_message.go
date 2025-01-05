@@ -174,6 +174,10 @@ func (question *DNSQuestion) Decode(buf *bytes.Reader) error {
 	return nil
 }
 
+// TODO: Generalize to handle responses from downstream resolver (i.e., answer section will NOT be empty)
+// Idea might be to write a Decode method for DNSAnswer that reads the answer section from *bytes.Reader
+// and make this a standalone function that takes a *bytes.Reader and returns a DNSMessage
+
 // Deserialize the DNS message from a byte slice received from the client
 func (message *DNSMessage) Decode(buf *bytes.Reader) error {
 	// Parse header

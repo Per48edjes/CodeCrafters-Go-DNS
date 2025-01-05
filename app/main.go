@@ -1,80 +1,82 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 )
 
 func main() {
 	// Establish UDP connection with upstream client
-	clientAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:2053")
+	udpAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:2053")
 	if err != nil {
 		fmt.Println("Failed to resolve UDP address:", err)
 		return
 	}
 
-	clientConn, err := net.ListenUDP("udp", clientAddr)
+	clientConn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		fmt.Println("Failed to bind to address:", err)
+		fmt.Println("Failed to bind to client address:", err)
 		return
 	}
 	defer clientConn.Close()
 
-	// Establish connection with downstream DNS server
+	// Establish UDP connection with downstream DNS server
 	resolverAddr, err := parseResolverFlag()
 	if err != nil {
 		fmt.Printf("Error parsing flags: %v\n", err)
 		return
 	}
 
-	resolverConn, err := net.ListenUDP("udp", resolverAddr)
+	resolverConn, err := net.DialUDP("udp", nil, resolverAddr)
 	if err != nil {
-		fmt.Println("Failed to bind to address:", err)
+		fmt.Println("Failed to bind to resolver address: ", err)
 		return
 	}
 	defer resolverConn.Close()
 
-	b := make([]byte, 512)
+	// Set up buffers for upsteam client and downstream resolver messages
+	clientBytes := make([]byte, 512)
+	downstreamBytes := make([]byte, 512)
 
 eventLoop:
 	for {
-		size, source, err := clientConn.ReadFromUDP(b)
+		var clientMessage *DNSMessage
+		clientMessage, err = readAndProcess(clientConn, clientBytes, false)
 		if err != nil {
-			fmt.Println("Error receiving data:", err)
-			break
+			fmt.Println("Failed to read and process client message:", err)
+			break eventLoop
 		}
 
-		receivedData := string(b[:size])
-		fmt.Printf("Received %d bytes from %s: %s\n", size, source, receivedData)
-
-		buf := bytes.NewReader(b[:size])
-
-		receivedMessage := &DNSMessage{}
-		if err = receivedMessage.Decode(buf); err != nil {
-			fmt.Println("Failed to decode received DNS message:", err)
-			break
-		}
-
-		// Split up received message into individual requests to forward
-		requestMessages := receivedMessage.SplitDNSMessage()
-		for _, requestMessage := range requestMessages {
+		// Split up received message into individual requests to forward to downstream resolver
+		requestMessages := clientMessage.SplitDNSMessage()
+		downstreamResponses := make([]*DNSMessage, len(requestMessages))
+		for i, requestMessage := range requestMessages {
 			var request []byte
 			request, err = requestMessage.Encode()
 			if err != nil {
-				fmt.Println("Failed to encode forward-ed request:", err)
+				fmt.Println("Failed to encode forwarded request:", err)
 				break eventLoop
 			}
 
-			_, err = clientConn.WriteToUDP(request, resolverAddr)
+			// Send request to downstream resolver
+			_, err = resolverConn.Write(request)
 			if err != nil {
-				fmt.Println("Failed to send response:", err)
+				fmt.Println("Failed to send request to downstream resolver:", err)
 			}
+
+			// Capture response from downstream resolver
+			var downstreamMessage *DNSMessage
+			downstreamMessage, err = readAndProcess(resolverConn, downstreamBytes, true)
+			if err != nil {
+				fmt.Println("Failed to read and process downstream response:", err)
+				break eventLoop
+			}
+			downstreamResponses[i] = downstreamMessage
 		}
 
-		// Modify the header to reflect that this is a response
-		receivedMessage.Header, err = receivedMessage.Header.ModifyDNSHeader(
-			ModifyANCount(receivedMessage.Header.QDCount), // Message contains answers in equal number to questions
+		// Modify the client response header
+		clientMessage.Header, err = clientMessage.Header.ModifyDNSHeader(
+			ModifyANCount(clientMessage.Header.QDCount), // Message contains answers in equal number to questions
 			ModifyQR(1), // Message is now a response
 			ModifyAA(0),
 			ModifyTC(0),
@@ -86,47 +88,30 @@ eventLoop:
 			break eventLoop
 		}
 
-		// NOTE: Everything below is from prior implementations
-
-		// Modify the questions to reflect the response
-		for i, question := range receivedMessage.Questions {
-			var name string
-			var answer *DNSAnswer
-			name, err = LabelsToString(question.Name)
-			if err != nil {
-				fmt.Println("Failed to convert labels to string:", err)
-				break eventLoop
-			}
+		for i, question := range clientMessage.Questions {
+			// Modify the question to reflect the response
 			question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
 			if err != nil {
 				fmt.Println("Failed to modify DNS Questions:", err)
 				break eventLoop
 			}
-			answer, err = NewDNSAnswer([]ResourceRecordOptions{{
-				Name:   name,
-				Type:   1,
-				Class:  1,
-				TTL:    60,
-				Length: 4,
-				Data:   "8.8.8.8",
-			}})
-			if err != nil {
-				fmt.Println("Failed to create new DNS Answer:", err)
-				break eventLoop
-			}
-			receivedMessage.Questions[i] = question
-			receivedMessage.Answers = append(receivedMessage.Answers, answer)
+			clientMessage.Questions[i] = question
+			// Copy answer from downstream response
+			// BUG: Why are the downstream responses' answer slices empty?
+			fmt.Println("Downstream response:", downstreamResponses[i])
+			answer := downstreamResponses[i].Answers[0]
+			clientMessage.Answers = append(clientMessage.Answers, answer)
 		}
 
-		response, err := receivedMessage.Encode()
+		response, err := clientMessage.Encode()
 		if err != nil {
-			fmt.Println("Failed to encode response message:", err)
+			fmt.Println("Failed to encode client response message:", err)
 			break eventLoop
 		}
 
-		_, err = clientConn.WriteToUDP(response, source)
+		_, err = clientConn.WriteToUDP(response, udpAddr)
 		if err != nil {
-			fmt.Println("Failed to send response:", err)
+			fmt.Println("Failed to send client response:", err)
 		}
 	}
 }

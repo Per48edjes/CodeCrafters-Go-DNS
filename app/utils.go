@@ -116,3 +116,28 @@ func (m *DNSMessage) SplitDNSMessage() []*DNSMessage {
 	}
 	return messages
 }
+
+// Reads from a UDP connection and processes the received data
+func readAndProcess(conn *net.UDPConn, bytesBuffer []byte, isClient bool) (*DNSMessage, error) {
+	var size int
+	var source *net.UDPAddr
+	var err error
+	if isClient {
+		size, err = conn.Read(bytesBuffer) // Client: pre-connected
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		size, source, err = conn.ReadFromUDP(bytesBuffer) // Server: listen mode
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("Received %d bytes from %s\n", size, source)
+	}
+	buf := bytes.NewReader(bytesBuffer[:size])
+	m := &DNSMessage{}
+	if err = m.Decode(buf); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
