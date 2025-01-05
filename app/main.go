@@ -7,29 +7,39 @@ import (
 )
 
 func main() {
-	udpAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:2053")
+	// Establish UDP connection with upstream client
+	clientAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:2053")
 	if err != nil {
 		fmt.Println("Failed to resolve UDP address:", err)
 		return
 	}
+
+	clientConn, err := net.ListenUDP("udp", clientAddr)
+	if err != nil {
+		fmt.Println("Failed to bind to address:", err)
+		return
+	}
+	defer clientConn.Close()
+
+	// Establish connection with downstream DNS server
 	resolverAddr, err := parseResolverFlag()
 	if err != nil {
 		fmt.Printf("Error parsing flags: %v\n", err)
 		return
 	}
 
-	udpConn, err := net.ListenUDP("udp", udpAddr)
+	resolverConn, err := net.ListenUDP("udp", resolverAddr)
 	if err != nil {
 		fmt.Println("Failed to bind to address:", err)
 		return
 	}
-	defer udpConn.Close()
+	defer resolverConn.Close()
 
 	b := make([]byte, 512)
 
 eventLoop:
 	for {
-		size, source, err := udpConn.ReadFromUDP(b)
+		size, source, err := clientConn.ReadFromUDP(b)
 		if err != nil {
 			fmt.Println("Error receiving data:", err)
 			break
@@ -56,7 +66,7 @@ eventLoop:
 				break eventLoop
 			}
 
-			_, err = udpConn.WriteToUDP(request, resolverAddr)
+			_, err = clientConn.WriteToUDP(request, resolverAddr)
 			if err != nil {
 				fmt.Println("Failed to send response:", err)
 			}
@@ -114,7 +124,7 @@ eventLoop:
 			break eventLoop
 		}
 
-		_, err = udpConn.WriteToUDP(response, source)
+		_, err = clientConn.WriteToUDP(response, source)
 		if err != nil {
 			fmt.Println("Failed to send response:", err)
 		}
