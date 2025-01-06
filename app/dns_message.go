@@ -174,9 +174,42 @@ func (question *DNSQuestion) Decode(buf *bytes.Reader) error {
 	return nil
 }
 
-// TODO: Generalize to handle responses from downstream resolver (i.e., answer section will NOT be empty)
-// Idea might be to write a Decode method for DNSAnswer that reads the answer section from *bytes.Reader
-// and make this a standalone function that takes a *bytes.Reader and returns a DNSMessage
+// Deserialize the DNS answer from the byte slice after the questions in a response
+func (answer *DNSAnswer) Decode(buf *bytes.Reader) error {
+	for {
+		rrNameBytes, err := ReadQName(buf)
+		if err != nil {
+			return err
+		}
+		rrName, err := BytesToLabels(rrNameBytes)
+		if err != nil {
+			return err
+		}
+		var record ResourceRecord
+		record.Name = rrName
+		if err := binary.Read(buf, binary.BigEndian, &record.Type); err != nil {
+			return err
+		}
+		if err := binary.Read(buf, binary.BigEndian, &record.Class); err != nil {
+			return err
+		}
+		if err := binary.Read(buf, binary.BigEndian, &record.TTL); err != nil {
+			return err
+		}
+		if err := binary.Read(buf, binary.BigEndian, &record.Length); err != nil {
+			return err
+		}
+		record.Data = make([]byte, record.Length)
+		if _, err := buf.Read(record.Data); err != nil {
+			return err
+		}
+		answer.ResourceRecords = append(answer.ResourceRecords, record)
+		if buf.Len() == 0 {
+			break
+		}
+	}
+	return nil
+}
 
 // Deserialize the DNS message from a byte slice received from the client
 func (message *DNSMessage) Decode(buf *bytes.Reader) error {
@@ -194,6 +227,15 @@ func (message *DNSMessage) Decode(buf *bytes.Reader) error {
 		}
 		receivedQuestions[i] = receivedQuestion
 	}
+	// Parse answers
+	receivedAnswers := make([]*DNSAnswer, receivedHeader.ANCount)
+	for i := 0; i < int(receivedHeader.ANCount); i++ {
+		receivedAnswer := &DNSAnswer{}
+		if err := receivedAnswer.Decode(buf); err != nil {
+			return err
+		}
+		receivedAnswers[i] = receivedAnswer
+	}
 	// Change header response code from query
 	var rCodeMod DNSHeaderModification
 	if receivedHeader.Flags&OpCodeMask == 0 {
@@ -205,7 +247,8 @@ func (message *DNSMessage) Decode(buf *bytes.Reader) error {
 	if err != nil {
 		return err
 	}
-	message.Header, message.Questions, message.Answers = receivedHeader, receivedQuestions, []*DNSAnswer{} // Empty answer section
+	// Assemble message
+	message.Header, message.Questions, message.Answers = receivedHeader, receivedQuestions, receivedAnswers
 	return nil
 }
 

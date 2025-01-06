@@ -97,7 +97,6 @@ eventLoop:
 			}
 			clientMessage.Questions[i] = question
 			// Copy answer from downstream response
-			// BUG: Why are the downstream responses' answer slices empty?
 			fmt.Println("Downstream response:", downstreamResponses[i])
 			answer := downstreamResponses[i].Answers[0]
 			clientMessage.Answers = append(clientMessage.Answers, answer)
