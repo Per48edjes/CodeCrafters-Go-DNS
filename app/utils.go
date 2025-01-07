@@ -117,27 +117,49 @@ func (m *DNSMessage) SplitDNSMessage() []*DNSMessage {
 	return messages
 }
 
-// Reads from a UDP connection and processes the received data
-func readAndProcess(conn *net.UDPConn, bytesBuffer []byte, isClient bool) (*DNSMessage, error) {
-	var size int
-	var source *net.UDPAddr
-	var err error
-	if isClient {
-		size, err = conn.Read(bytesBuffer) // Client: pre-connected
+// Handles responses from downstream server for given set of requestMessages
+func DNSServerHandler(downstreamAddr *net.UDPAddr, requestMessages []*DNSMessage) ([]*DNSMessage, error) {
+	var downstreamResponses []*DNSMessage
+	for _, requestMessage := range requestMessages {
+		// Dial DNS server via UDP
+		resolverConn, err := net.DialUDP("udp", nil, downstreamAddr)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		size, source, err = conn.ReadFromUDP(bytesBuffer) // Server: listen mode
+		defer resolverConn.Close()
+
+		// Modify the client response header
+		requestMessage.Header, err = requestMessage.Header.ModifyDNSHeader(
+			ModifyQDCount(1), // Sending only singleton questions to downstream server
+		)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("Received %d bytes from %s\n", size, source)
+
+		// Send request to downstream resolver
+		request, err := requestMessage.Encode()
+		if err != nil {
+			return nil, err
+		}
+		_, err = resolverConn.Write(request)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("Sent %d bytes to downstream server: %v\n", len(request), request)
+
+		// Read and process downstream server message
+		downstreamMessage := &DNSMessage{}
+		downstreamBytes := make([]byte, 512)
+		size, err := resolverConn.Read(downstreamBytes)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("Received %d bytes from downstream server: %v\n", size, downstreamBytes[:size])
+		buf := bytes.NewReader(downstreamBytes[:size])
+		if err = downstreamMessage.Decode(buf); err != nil {
+			return nil, err
+		}
+		downstreamResponses = append(downstreamResponses, downstreamMessage)
 	}
-	buf := bytes.NewReader(bytesBuffer[:size])
-	m := &DNSMessage{}
-	if err = m.Decode(buf); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return downstreamResponses, nil
 }

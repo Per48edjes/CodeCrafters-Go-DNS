@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 )
@@ -27,21 +28,21 @@ func main() {
 		return
 	}
 
-	resolverConn, err := net.DialUDP("udp", nil, resolverAddr)
-	if err != nil {
-		fmt.Println("Failed to bind to resolver address: ", err)
-		return
-	}
-	defer resolverConn.Close()
-
-	// Set up buffers for upsteam client and downstream resolver messages
-	clientBytes := make([]byte, 512)
-	downstreamBytes := make([]byte, 512)
-
 eventLoop:
 	for {
-		var clientMessage *DNSMessage
-		clientMessage, err = readAndProcess(clientConn, clientBytes, false)
+		// Read and process client message
+		clientBytes := make([]byte, 512)
+		size, source, err := clientConn.ReadFromUDP(clientBytes)
+		if err != nil {
+			fmt.Println("Failed to read client message:", err)
+			break eventLoop
+		}
+		fmt.Printf("Received %d bytes from client at %s: %v\n", size, source, clientBytes[:size])
+		buf := bytes.NewReader(clientBytes[:size])
+		clientMessage := &DNSMessage{}
+		if err = clientMessage.Decode(buf); err != nil {
+			fmt.Println("Failed to process client message:", err)
+		}
 		if err != nil {
 			fmt.Println("Failed to read and process client message:", err)
 			break eventLoop
@@ -49,35 +50,31 @@ eventLoop:
 
 		// Split up received message into individual requests to forward to downstream resolver
 		requestMessages := clientMessage.SplitDNSMessage()
-		downstreamResponses := make([]*DNSMessage, len(requestMessages))
-		for i, requestMessage := range requestMessages {
-			var request []byte
-			request, err = requestMessage.Encode()
+		downstreamResponses, err := DNSServerHandler(resolverAddr, requestMessages)
+		if err != nil {
+			fmt.Println("Failed to forward client requests to downstream server:", err)
+			break eventLoop
+		}
+
+		// Modify the client response questions and populate client response answers
+		var answerCount uint16
+		for i, question := range clientMessage.Questions {
+			question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
 			if err != nil {
-				fmt.Println("Failed to encode forwarded request:", err)
+				fmt.Println("Failed to modify DNS Questions:", err)
 				break eventLoop
 			}
-
-			// Send request to downstream resolver
-			_, err = resolverConn.Write(request)
-			if err != nil {
-				fmt.Println("Failed to send request to downstream resolver:", err)
+			clientMessage.Questions[i] = question
+			if answers := downstreamResponses[i].Answers; len(answers) > 0 {
+				clientMessage.Answers = append(clientMessage.Answers, answers[0])
+				answerCount++
 			}
-
-			// Capture response from downstream resolver
-			var downstreamMessage *DNSMessage
-			downstreamMessage, err = readAndProcess(resolverConn, downstreamBytes, true)
-			if err != nil {
-				fmt.Println("Failed to read and process downstream response:", err)
-				break eventLoop
-			}
-			downstreamResponses[i] = downstreamMessage
 		}
 
 		// Modify the client response header
 		clientMessage.Header, err = clientMessage.Header.ModifyDNSHeader(
-			ModifyANCount(clientMessage.Header.QDCount), // Message contains answers in equal number to questions
-			ModifyQR(1), // Message is now a response
+			ModifyANCount(answerCount), // Update answer count
+			ModifyQR(1),                // Mark message as a response
 			ModifyAA(0),
 			ModifyTC(0),
 			ModifyRA(0),
@@ -88,27 +85,14 @@ eventLoop:
 			break eventLoop
 		}
 
-		for i, question := range clientMessage.Questions {
-			// Modify the question to reflect the response
-			question, err = question.ModifyDNSQuestion(ModifyQType(1), ModifyClass(1))
-			if err != nil {
-				fmt.Println("Failed to modify DNS Questions:", err)
-				break eventLoop
-			}
-			clientMessage.Questions[i] = question
-			// Copy answer from downstream response
-			fmt.Println("Downstream response:", downstreamResponses[i])
-			answer := downstreamResponses[i].Answers[0]
-			clientMessage.Answers = append(clientMessage.Answers, answer)
-		}
-
 		response, err := clientMessage.Encode()
 		if err != nil {
 			fmt.Println("Failed to encode client response message:", err)
 			break eventLoop
 		}
 
-		_, err = clientConn.WriteToUDP(response, udpAddr)
+		_, err = clientConn.WriteToUDP(response, source)
+		fmt.Printf("Response sent to client at %s: %v", source, response)
 		if err != nil {
 			fmt.Println("Failed to send client response:", err)
 		}
